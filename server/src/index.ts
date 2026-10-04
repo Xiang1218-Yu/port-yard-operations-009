@@ -1,5 +1,5 @@
 import express from 'express';
-import { appointments, assignTask, blocks, containerDetail, containers, createContainer, createGateAppointment, createYardTask, dashboard, deleteContainer, deleteGateAppointment, deleteYardTask, editGateAppointment, equipment, gateConflicts, prioritizeTasks, tasks, updateContainer, updateYardTask, voyages, yardHeatmap } from './domain.js';
+import { appointments, assignTask, blocks, containerDetail, containers, createContainer, createGateAppointment, createOrchestrationPlan, createYardTask, dashboard, deleteContainer, deleteGateAppointment, deleteYardTask, editGateAppointment, equipment, gateConflicts, insertOrchestrationTask, listOrchestrationPlans, lockOrchestrationTask, prioritizeTasks, submitOrchestrationPlan, tasks, undoOrchestrationPlan, unlockOrchestrationTask, updateContainer, updateYardTask, voyages, yardHeatmap } from './domain.js';
 const app = express(); app.use(express.json());
 app.get('/api/dashboard', (_req, res) => res.json(dashboard()));
 app.get('/api/voyages', (_req, res) => res.json(voyages));
@@ -21,5 +21,20 @@ app.post('/api/tasks', (req, res) => { try { res.status(201).json(createYardTask
 app.patch('/api/tasks/:id', (req, res) => { try { const result = updateYardTask(req.params.id, req.body); if (!result) return res.status(404).json({ message: '作业任务不存在' }); res.json(result); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '更新作业任务失败' }); } });
 app.delete('/api/tasks/:id', (req, res) => { const result = deleteYardTask(req.params.id); if (!result) return res.status(404).json({ message: '作业任务不存在' }); res.json({ deleted: true, id: result.id }); });
 app.patch('/api/tasks/:id/assign', (req, res) => { const result = assignTask(req.params.id, req.body.equipmentId); if (!result) return res.status(404).json({ message: '任务或设备不存在' }); res.json(result); });
+app.get('/api/orchestration/plans', (_req, res) => res.json(listOrchestrationPlans()));
+app.post('/api/orchestration/plans', (_req, res) => res.status(201).json(createOrchestrationPlan()));
+app.get('/api/orchestration/plans/:id', (req, res) => { const result = listOrchestrationPlans().find(plan => plan.id === req.params.id); if (!result) return res.status(404).json({ message: '编排计划不存在' }); res.json(result); });
+app.post('/api/orchestration/plans/:id/lock', (req, res) => { try { res.json(lockOrchestrationTask(req.params.id, String(req.body.taskId), Number(req.body.position))); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '锁定失败' }); } });
+app.delete('/api/orchestration/plans/:id/lock/:taskId', (req, res) => { try { res.json(unlockOrchestrationTask(req.params.id, req.params.taskId)); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '解除锁定失败' }); } });
+app.post('/api/orchestration/plans/:id/insert', (req, res) => { try { res.json(insertOrchestrationTask(req.params.id, String(req.body.taskId), String(req.body.beforeTaskId))); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '插队失败' }); } });
+app.post('/api/orchestration/plans/:id/submit', (req, res) => {
+  try {
+    const result = submitOrchestrationPlan(req.params.id, req.body?.clientToken ? String(req.body.clientToken) : undefined, req.body?.failAfterStep !== undefined ? { failAfterStep: Number(req.body.failAfterStep) } : undefined);
+    if (result.status === 'conflict') return res.status(409).json(result);
+    if (result.status === 'duplicate') return res.status(200).json(result);
+    res.status(200).json(result);
+  } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '提交编排计划失败' }); }
+});
+app.post('/api/orchestration/plans/:id/undo', (req, res) => { try { res.json(undoOrchestrationPlan(req.params.id)); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '撤销失败' }); } });
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'port-yard-operations' }));
 const port = Number(process.env.PORT || 4107); app.listen(port, () => console.log(`port yard API listening on ${port}`));
